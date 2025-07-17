@@ -46,10 +46,8 @@ static void start_http_server(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
 
 // Variáveis globais
-static volatile int max_humidity_limit = 100; // Limite máximo de umidade
-static volatile int min_humidity_limit = 0;  // Nível mínimo de umidade
-static volatile int max_temperature_limit = 100; // Limite máximo de temperatura
-static volatile int min_temperature_limit = 0; // Nível mínimo de temperatura
+static volatile int max_temperature_limit = 70; // Limite máximo de temperatura
+static volatile int min_temperature_limit = 5; // Nível mínimo de temperatura
 static volatile int64_t last_button_a_press_time = 0; // Tempo do último pressionamento de botão
 static volatile int64_t last_button_b_press_time = 0; // Tempo do último pressionamento de botão B
 static volatile int64_t last_button_sw_press_time = 0; // Tempo do último pressionamento do botão SW
@@ -62,10 +60,9 @@ int main()
 
     init_btns();
     init_btn(BTN_SW_PIN);
-
     init_leds_pwm();
-
     init_joystick();
+    ws2812b_init();
 
     init_buzzer(BUZZER_A_PIN, 4.0f); // Inicializa o buzzer A
     init_buzzer(BUZZER_B_PIN, 4.0f); // Inicializa o buzzer B
@@ -173,20 +170,18 @@ double calculate_altitude(double pressure)
     return 44330.0 * (1.0 - pow(pressure / SEA_LEVEL_PRESSURE, 0.1903));
 }
 
-// Função para verificar os alertas de temperatura e umidade
+// Função para verificar os alertas de temperatura
 void check_alerts(float temperature, float humidity) {
     if (is_alert_active) {
-        if (temperature > max_temperature_limit || temperature < min_temperature_limit) {
+        if (temperature > max_temperature_limit) {
             printf("Alerta: Temperatura fora dos limites!\n");
             play_tone(BUZZER_A_PIN, 1000); // Toca o buzzer A
             sleep_ms(250); //
             stop_tone(BUZZER_A_PIN); // Para o buzzer A
-        }
-
-        if (humidity > max_humidity_limit || humidity < min_humidity_limit) {
-            printf("Alerta: Umidade fora dos limites!\n");
-            play_tone(BUZZER_B_PIN, 2000); // Toca o buzzer B
-            sleep_ms(250); // Espera 250ms
+        } else if (temperature < min_temperature_limit) {
+            printf("Alerta: Temperatura abaixo do limite!\n");
+            play_tone(BUZZER_B_PIN, 500); // Toca o buzzer B
+            sleep_ms(250); //
             stop_tone(BUZZER_B_PIN); // Para o buzzer B
         }
     }
@@ -194,53 +189,63 @@ void check_alerts(float temperature, float humidity) {
 
 // Função para verificar as condições climáticas
 void check_climate_conditions(float temperature, float humidity) {
-    bool clima_quente = temperature > 30;
-    bool clima_frio   = temperature < 15;
-    bool clima_umido  = humidity > 80;
-    bool clima_seco   = humidity < 20;
+    bool is_hot = temperature > 30;
+    bool is_very_hot = temperature > 50;
+    bool is_cold   = temperature < 15;
+    bool is_very_cold = temperature < 5;
+    bool is_humid  = humidity > 80;
+    bool is_dry   = humidity < 20;
 
-    if (clima_quente && clima_umido) {
-        printf("Clima quente e úmido: %.2f C / %.2f %%\n", temperature, humidity);
-        set_led_orange_pwm(); //  quente + úmido
+    ws2812b_clear(); // Limpa os LEDs
+
+    if (is_hot) {
+        ws2812b_fill_row(0, 0, 0, 255); // Preenche a primeira linha de baixo com azul forte
+        ws2812b_fill_row(1, 0, 0, 128); // Preenche a segunda linha de baixo com azul fraco
+        ws2812b_fill_row(2, 0, 255, 0);
+        ws2812b_fill_row(3, 128, 0, 0); // Preenche a primeira linha de baixo com azul forte
+
+        if (is_very_hot) {
+            printf("Clima muito quente!\n");
+            ws2812b_fill_row(4, 255, 0, 0); // Preenche a última linha de baixo com vermelho forte
+        } else {
+            printf("Clima quente!\n");
+        }
+
+    } else if (is_cold) {
+        if (is_very_cold) {
+            printf("Clima muito frio!\n");
+            ws2812b_fill_row(0, 0, 0, 255); // Preenche a primeira linha de baixo com azul forte
+
+        } else {
+            printf("Clima frio!\n");
+            ws2812b_fill_row(0, 0, 0, 128); // Preenche a primeira linha de baixo com azul fraco
+        }
+        set_led_blue_pwm(); // LED azul para clima frio
+    } else {
+        printf("Clima ideal!\n");
+        ws2812b_fill_row(0, 0, 0, 255); // Preenche a primeira linha de baixo com azul forte
+        ws2812b_fill_row(1, 0, 0, 128); // Preenche a segunda linha de baixo com azul fraco
+        ws2812b_fill_row(2, 0, 255, 0);
     }
-    else if (clima_quente && clima_seco) {
-        printf("Clima quente e seco: %.2f C / %.2f %%\n", temperature, humidity);
-        set_led_purple_pwm(); //  quente + seco
-    }
-    else if (clima_frio && clima_umido) {
-        printf("Clima frio e úmido: %.2f C / %.2f %%\n", temperature, humidity);
-        set_led_cyan_pwm(); //  frio + úmido
-    }
-    else if (clima_frio && clima_seco) {
-        printf("Clima frio e seco: %.2f C / %.2f %%\n", temperature, humidity);
-        set_led_white_pwm(); // frio + seco
-    }
-    else if (clima_quente) {
-        printf("Clima quente: %.2f C\n", temperature);
-        set_led_red_pwm(); // Clima quente
-    }
-    else if (clima_frio) {
-        printf("Clima frio: %.2f C\n", temperature);
-        set_led_blue_pwm(); // Clima frio
-    }
-    else if (clima_umido) {
-        printf("Clima úmido: %.2f %%\n", humidity);
-        set_led_yellow_pwm(); // Clima úmido
-    }
-    else if (clima_seco) {
-        printf("Clima seco: %.2f %%\n", humidity);
-        set_led_magenta_pwm(); // Clima seco
-    }
-    else {
-        printf("Clima ameno: %.2f C / %.2f %%\n", temperature, humidity);
-        set_led_green_pwm(); // Clima ameno
+
+    ws2812b_write(); // Atualiza a matriz de LEDs
+
+    if (is_humid) {
+        set_led_blue_pwm(); // LED ciano para clima úmido
+        printf("Clima úmido detectado!\n");
+    } else if (is_dry) {
+        set_led_red_pwm(); // LED amarelo para clima seco
+        printf("Clima seco detectado!\n");
+    } else {
+        set_led_green_pwm(); // LED branco para clima normal
+        printf("Clima normal detectado!\n");
     }
 }
 
 // Função para obter dados simulados do AHT20
 void get_simulated_data(AHT20_Data *data) {
     // Simula dados de temperatura e umidade
-    data->temperature = 100 - (get_joystick_y () / 4095.0 * 100.0); // Temperatura entre 0.0 e 100.0 C
+    data->temperature = get_joystick_y () / 4095.0 * 100.0; // Temperatura entre 0.0 e 60.0 C
     data->humidity = get_joystick_x () / 4095.0 * 100.0; // Umidade entre 0.0 e 100.0
 
     printf("Dados simulados: Temperatura: %.2f C, Umidade: %.2f %%\n", data->temperature, data->humidity);
@@ -289,15 +294,15 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
             if(sscanf(body, "{\"max\":%d,\"min\":%d", &max_val, &min_val) == 2) {
                 // Valida os valores recebidos
                 if(max_val >= 0 && max_val <= 100 && min_val >= 0 && min_val <= 100) {
-                    max_humidity_limit = max_val;
-                    min_humidity_limit = min_val;
+                    max_temperature_limit = max_val;
+                    min_temperature_limit = min_val;
                 }
             }
         }
 
         printf("Novos limites: Max=%d, Min=%d\n",
-            max_humidity_limit,
-            min_humidity_limit);
+            max_temperature_limit,
+            min_temperature_limit);
 
         // Confirma atualização
         const char *txt = "Limites atualizados";
@@ -382,10 +387,8 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         // Atualiza o tempo do último pressionamento do botão B
         last_button_b_press_time = current_time;
 
-        min_temperature_limit = 0; // Reseta o limite mínimo de temperatura
-        max_temperature_limit = 100; // Reseta o limite máximo de temperatura
-        min_humidity_limit = 0; // Reseta o limite mínimo de umidade
-        max_humidity_limit = 100; // Reseta o limite máximo de umidade
+        min_temperature_limit = 5; // Reseta o limite mínimo de temperatura
+        max_temperature_limit = 70; // Reseta o limite máximo de temperatura
     }
 
 }

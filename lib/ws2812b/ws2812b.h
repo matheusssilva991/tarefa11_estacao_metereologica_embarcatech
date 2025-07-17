@@ -10,6 +10,7 @@
 #define LED_MATRIX_ROW 5
 #define LED_MATRIX_COL 5
 #define LED_MATRIX_SIZE (LED_MATRIX_ROW * LED_MATRIX_COL) // 5x5 = 25 LEDs
+#define LED_MATRIX_PIN 7 // GPIO para a matriz de LEDs WS2812B
 
 
 // Tipos de dados.
@@ -24,11 +25,13 @@ extern ws2812b_LED_t led_matrix[LED_MATRIX_SIZE]; // Declaração do buffer de p
 extern PIO led_matrix_pio;                     // Ponteiro para a máquina PIO.
 extern uint sm;                        // Número da máquina state machine.
 
-void ws2812b_init(uint pin);
+void ws2812b_init();
 void ws2812b_set_led(const uint index, const uint8_t r, const uint8_t g, const uint8_t b);
 void ws2812b_clear();
 void ws2812b_write();
-void ws2812b_draw_point(uint8_t number_index, const int color[3]);
-void ws2812b_fill_column(uint8_t column, const int color[3]);
+void ws2812b_draw_point(uint8_t point_index, const uint8_t r, const uint8_t g, const uint8_t b);
+void ws2812b_fill_column(uint8_t column, const uint8_t r, const uint8_t g, const uint8_t b);
+void ws2812b_fill_row(uint8_t row, const uint8_t r, const uint8_t g, const uint8_t b);
+void ws2812b_fill_matrix(const uint8_t r, const uint8_t g, const uint8_t b);
 
 #endif // WS2812B_H
