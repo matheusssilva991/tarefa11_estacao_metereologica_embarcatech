@@ -41,6 +41,7 @@ add_executable(${PROJECT_NAME} main.c
         lib/led/led.c # LED library
         lib/ws2812b/ws2812b.c # WS2812B library
         lib/buzzer/buzzer.c # Buzzer library)
+        lib/joystick/joystick.c # Joystick library
 )
 
 include_directories( ${CMAKE_SOURCE_DIR}/lib ) # Inclui os files .h na pasta lib

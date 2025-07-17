@@ -51,7 +51,9 @@ void set_led_red()     { turn_off_leds; gpio_put(RED_LED_PIN, true); }
 void set_led_yellow()  { turn_off_leds; gpio_put(GREEN_LED_PIN, true); gpio_put(BLUE_LED_PIN, true); } // Verde + Azul
 void set_led_orange()  { turn_off_leds; gpio_put(GREEN_LED_PIN, true); gpio_put(BLUE_LED_PIN, false); gpio_put(RED_LED_PIN, true); } // Verde + Vermelho
 void set_led_cyan()    { turn_off_leds; gpio_put(GREEN_LED_PIN, true); gpio_put(BLUE_LED_PIN, true); gpio_put(RED_LED_PIN, false); } // Verde + Azul
+void set_led_magenta() { turn_off_leds; gpio_put(GREEN_LED_PIN, true); gpio_put(BLUE_LED_PIN, false); gpio_put(RED_LED_PIN, true); } // Verde + Vermelho
 void set_led_white()   { turn_off_leds; gpio_put(GREEN_LED_PIN, true); gpio_put(BLUE_LED_PIN, true); gpio_put(RED_LED_PIN, true); } // Todas cores
+void set_led_purple()  { turn_off_leds; gpio_put(GREEN_LED_PIN, false); gpio_put(BLUE_LED_PIN, true); gpio_put(RED_LED_PIN, true); } // Roxo = Vermelho + Azul reduzido
 void set_led_off()     { turn_off_leds; gpio_put(GREEN_LED_PIN, false); gpio_put(BLUE_LED_PIN, false); gpio_put(RED_LED_PIN, false); } // Desliga
 
 void set_led_red_pwm ()    { pwm_set_rgb(255, 0, 0); }
@@ -60,6 +62,8 @@ void set_led_green_pwm ()  { pwm_set_rgb(0, 255, 0); }
 void set_led_yellow_pwm () { pwm_set_rgb(255, 255, 0); }  // Vermelho + Verde
 void set_led_orange_pwm () { pwm_set_rgb(255, 100, 0); }  // Laranja = V + G reduzido
 void set_led_cyan_pwm ()   { pwm_set_rgb(0, 255, 255); }  // Verde + Azul
+void set_led_magenta_pwm() { pwm_set_rgb(255, 0, 255); } // Vermelho + Azul
+void set_led_purple_pwm()  { pwm_set_rgb(128, 0, 128); } // Roxo = Vermelho + Azul reduzido
 void set_led_white_pwm ()  { pwm_set_rgb(255, 255, 255); } // Todas cores
 void set_led_off_pwm ()    { pwm_set_rgb(0, 0, 0); }       // Desliga
 

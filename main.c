@@ -13,6 +13,8 @@
 #include "lib/buzzer/buzzer.h"
 #include "lib/aht20/aht20.h"
 #include "lib/bmp280/bmp280.h"
+#include "lib/joystick/joystick.h"
+
 #include "config/wifi_config.h"
 #include "public/html_data.h"
 
@@ -33,6 +35,7 @@ struct http_state
 };
 
 // Prototipos
+void get_simulated_data(AHT20_Data *data);
 double calculate_altitude(double pressure);
 void check_alerts(float temperature, float humidity);
 void check_climate_conditions(float temperature, float humidity);
@@ -43,13 +46,15 @@ static void start_http_server(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
 
 // Variáveis globais
-int max_humidity_limit = 100; // Limite máximo de umidade
-int min_humidity_limit = 0;  // Nível mínimo de umidade
-int max_temperature_limit = 100; // Limite máximo de temperatura
-int min_temperature_limit = 0; // Nível mínimo de temperatura
-int64_t last_button_a_press_time = 0; // Tempo do último pressionamento de botão
-int64_t last_button_b_press_time = 0; // Tempo do último pressionamento de botão B
-bool is_alert_active = true; // Flag para indicar se o alerta está ativo
+static volatile int max_humidity_limit = 100; // Limite máximo de umidade
+static volatile int min_humidity_limit = 0;  // Nível mínimo de umidade
+static volatile int max_temperature_limit = 100; // Limite máximo de temperatura
+static volatile int min_temperature_limit = 0; // Nível mínimo de temperatura
+static volatile int64_t last_button_a_press_time = 0; // Tempo do último pressionamento de botão
+static volatile int64_t last_button_b_press_time = 0; // Tempo do último pressionamento de botão B
+static volatile int64_t last_button_sw_press_time = 0; // Tempo do último pressionamento do botão SW
+static volatile bool is_alert_active = true; // Flag para indicar se o alerta está ativo
+static volatile bool is_simulated = false; // Flag para simulação de dados
 
 int main()
 {
@@ -59,6 +64,8 @@ int main()
     init_btn(BTN_SW_PIN);
 
     init_leds_pwm();
+
+    init_joystick();
 
     init_buzzer(BUZZER_A_PIN, 4.0f); // Inicializa o buzzer A
     init_buzzer(BUZZER_B_PIN, 4.0f); // Inicializa o buzzer B
@@ -121,28 +128,32 @@ int main()
     {
         cyw43_arch_poll();
 
-        // Leitura do BMP280
-        bmp280_read_raw(I2C0_PORT, &raw_temp_bmp, &raw_pressure);
-        temperature = bmp280_convert_temp(raw_temp_bmp, &params);
-        pressure = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &params);
+        // Verifica se os dados estão sendo simulados
+        if (is_simulated) {
+            get_simulated_data(&data);
+        } else {
+            // Leitura do BMP280
+            bmp280_read_raw(I2C0_PORT, &raw_temp_bmp, &raw_pressure);
+            temperature = bmp280_convert_temp(raw_temp_bmp, &params);
+            pressure = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &params);
 
-        // Cálculo da altitude
-        altitude = calculate_altitude(pressure);
+            // Cálculo da altitude
+            altitude = calculate_altitude(pressure);
 
-        printf("Pressão BMP =  %d Pa\n", pressure);
-        printf("Pressao BMP = %.3f kPa\n", pressure / 1000.0);
-        printf("Temperatura BMP: = %.2f C\n", temperature / 100.0);
-        printf("Altitude estimada: %.2f m\n", altitude);
+            printf("Pressao BMP = %.3f kPa\n", pressure / 1000.0);
+            printf("Temperatura BMP: = %.2f C\n", temperature / 100.0);
+            printf("Altitude estimada: %.2f m\n", altitude);
 
-        // Leitura do AHT20
-        if (aht20_read(I2C1_PORT, &data))
-        {
-            printf("Temperatura AHT: %.2f C\n", data.temperature);
-            printf("Umidade: %.2f %%\n\n\n", data.humidity);
-        }
-        else
-        {
-            printf("Erro na leitura do AHT10!\n\n\n");
+            // Leitura do AHT20
+            if (aht20_read(I2C1_PORT, &data))
+            {
+                printf("Temperatura AHT: %.2f C\n", data.temperature);
+                printf("Umidade: %.2f %%\n\n\n", data.humidity);
+            }
+            else
+            {
+                printf("Erro na leitura do AHT10!\n\n\n");
+            }
         }
 
         // Verifica os alertas
@@ -224,6 +235,15 @@ void check_climate_conditions(float temperature, float humidity) {
         printf("Clima ameno: %.2f C / %.2f %%\n", temperature, humidity);
         set_led_green_pwm(); // Clima ameno
     }
+}
+
+// Função para obter dados simulados do AHT20
+void get_simulated_data(AHT20_Data *data) {
+    // Simula dados de temperatura e umidade
+    data->temperature = 100 - (get_joystick_y () / 4095.0 * 100.0); // Temperatura entre 0.0 e 100.0 C
+    data->humidity = get_joystick_x () / 4095.0 * 100.0; // Umidade entre 0.0 e 100.0
+
+    printf("Dados simulados: Temperatura: %.2f C, Umidade: %.2f %%\n", data->temperature, data->humidity);
 }
 
 // Função de callback para enviar dados HTTP
@@ -342,9 +362,12 @@ void gpio_irq_handler(uint gpio, uint32_t events)
 {
     int current_time = to_ms_since_boot(get_absolute_time());
 
-    if (gpio == BTN_SW_PIN)
+    if (gpio == BTN_SW_PIN && (current_time - last_button_sw_press_time > 300))
     {
-        reset_usb_boot(0, 0); // Reinicia o dispositivo para o modo de boot USB
+        // Atualiza o tempo do último pressionamento do botão SW
+        last_button_sw_press_time = current_time;
+
+        is_simulated = !is_simulated; // Alterna o estado de simulação
     }
     else if (gpio == BTN_A_PIN && (current_time - last_button_a_press_time > 300))
     {
