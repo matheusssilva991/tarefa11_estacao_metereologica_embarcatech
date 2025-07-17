@@ -34,6 +34,7 @@ struct http_state
 
 // Prototipos
 double calculate_altitude(double pressure);
+void check_alerts(float temperature, float humidity);
 static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len);
 static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
 static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err);
@@ -55,6 +56,9 @@ int main()
 
     init_btns();
     init_btn(BTN_SW_PIN);
+
+    init_buzzer(BUZZER_A_PIN, 4.0f); // Inicializa o buzzer A
+    init_buzzer(BUZZER_B_PIN, 4.0f); // Inicializa o buzzer B
 
     gpio_set_irq_enabled_with_callback(BTN_SW_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_RISE, true);
@@ -138,6 +142,9 @@ int main()
             printf("Erro na leitura do AHT10!\n\n\n");
         }
 
+        // Verifica os alertas
+        check_alerts(data.temperature, data.humidity);
+
         sleep_ms(500);
     }
     cyw43_arch_deinit(); // Esperamos que nunca chegue aqui
@@ -147,6 +154,24 @@ int main()
 double calculate_altitude(double pressure)
 {
     return 44330.0 * (1.0 - pow(pressure / SEA_LEVEL_PRESSURE, 0.1903));
+}
+
+void check_alerts(float temperature, float humidity) {
+    if (is_alert_active) {
+        if (temperature > max_temperature_limit || temperature < min_temperature_limit) {
+            printf("Alerta: Temperatura fora dos limites!\n");
+            play_tone(BUZZER_A_PIN, 1000); // Toca o buzzer A
+            sleep_ms(250); //
+            stop_tone(BUZZER_A_PIN); // Para o buzzer A
+        }
+
+        if (humidity > max_humidity_limit || humidity < min_humidity_limit) {
+            printf("Alerta: Umidade fora dos limites!\n");
+            play_tone(BUZZER_B_PIN, 2000); // Toca o buzzer B
+            sleep_ms(250); // Espera 250ms
+            stop_tone(BUZZER_B_PIN); // Para o buzzer B
+        }
+    }
 }
 
 // Função de callback para enviar dados HTTP
