@@ -175,12 +175,12 @@ void check_alerts(float temperature, float humidity) {
     if (is_alert_active) {
         if (temperature > max_temperature_limit) {
             printf("Alerta: Temperatura fora dos limites!\n");
-            play_tone(BUZZER_A_PIN, 1000); // Toca o buzzer A
+            play_tone(BUZZER_A_PIN, 700); // Toca o buzzer A
             sleep_ms(250); //
             stop_tone(BUZZER_A_PIN); // Para o buzzer A
         } else if (temperature < min_temperature_limit) {
             printf("Alerta: Temperatura abaixo do limite!\n");
-            play_tone(BUZZER_B_PIN, 500); // Toca o buzzer B
+            play_tone(BUZZER_B_PIN, 400); // Toca o buzzer B
             sleep_ms(250); //
             stop_tone(BUZZER_B_PIN); // Para o buzzer B
         }
@@ -199,46 +199,37 @@ void check_climate_conditions(float temperature, float humidity) {
     ws2812b_clear(); // Limpa os LEDs
 
     if (is_hot) {
-        ws2812b_fill_row(0, 0, 0, 255); // Preenche a primeira linha de baixo com azul forte
-        ws2812b_fill_row(1, 0, 0, 128); // Preenche a segunda linha de baixo com azul fraco
-        ws2812b_fill_row(2, 0, 255, 0);
-        ws2812b_fill_row(3, 128, 0, 0); // Preenche a primeira linha de baixo com azul forte
+        /*ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha de baixo com azul fraco
+        ws2812b_fill_row(2, 0, 32, 0);
+        ws2812b_fill_row(3, 32, 0, 0); // Preenche a primeira linha de baixo com vermel fraco */
 
         if (is_very_hot) {
-            printf("Clima muito quente!\n");
-            ws2812b_fill_row(4, 255, 0, 0); // Preenche a última linha de baixo com vermelho forte
+            //ws2812b_fill_row(4, 32, 0, 0); // Preenche a última linha de baixo com vermelho forte
         } else {
-            printf("Clima quente!\n");
         }
 
     } else if (is_cold) {
         if (is_very_cold) {
-            printf("Clima muito frio!\n");
-            ws2812b_fill_row(0, 0, 0, 255); // Preenche a primeira linha de baixo com azul forte
+            //ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha de baixo com azul forte
 
         } else {
-            printf("Clima frio!\n");
-            ws2812b_fill_row(0, 0, 0, 128); // Preenche a primeira linha de baixo com azul fraco
+            /* ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha de baixo com azul fraco
+            ws2812b_fill_row(1, 0, 0, 16); // Preenche a primeira linha de baixo com azul forte */
         }
-        set_led_blue_pwm(); // LED azul para clima frio
     } else {
-        printf("Clima ideal!\n");
-        ws2812b_fill_row(0, 0, 0, 255); // Preenche a primeira linha de baixo com azul forte
-        ws2812b_fill_row(1, 0, 0, 128); // Preenche a segunda linha de baixo com azul fraco
-        ws2812b_fill_row(2, 0, 255, 0);
+        /* ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha de baixo com azul forte
+        ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha de baixo com azul fraco
+        ws2812b_fill_row(2, 0, 32, 0); */
     }
 
     ws2812b_write(); // Atualiza a matriz de LEDs
 
     if (is_humid) {
         set_led_blue_pwm(); // LED ciano para clima úmido
-        printf("Clima úmido detectado!\n");
     } else if (is_dry) {
         set_led_red_pwm(); // LED amarelo para clima seco
-        printf("Clima seco detectado!\n");
     } else {
         set_led_green_pwm(); // LED branco para clima normal
-        printf("Clima normal detectado!\n");
     }
 }
 
