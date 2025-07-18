@@ -34,8 +34,18 @@ struct http_state
     size_t sent;
 };
 
+typedef struct weather_data
+{
+    float temperature;
+    float humidity;
+    float pressure;
+    float altitude;
+    int minTemperature;
+    int maxTemperature;
+} weather_data_t;
+
 // Prototipos
-void get_simulated_data(AHT20_Data *data);
+void get_simulated_data(weather_data_t *data);
 double calculate_altitude(double pressure);
 void check_alerts(float temperature, float humidity);
 void check_climate_conditions(float temperature, float humidity);
@@ -46,13 +56,12 @@ static void start_http_server(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
 
 // Variáveis globais
-static volatile int max_temperature_limit = 70; // Limite máximo de temperatura
-static volatile int min_temperature_limit = 5; // Nível mínimo de temperatura
-static volatile int64_t last_button_a_press_time = 0; // Tempo do último pressionamento de botão
-static volatile int64_t last_button_b_press_time = 0; // Tempo do último pressionamento de botão B
-static volatile int64_t last_button_sw_press_time = 0; // Tempo do último pressionamento do botão SW
-static volatile bool is_alert_active = true; // Flag para indicar se o alerta está ativo
-static volatile bool is_simulated = false; // Flag para simulação de dados
+static weather_data_t weather_data = {0, 0, 0, 0, 10, 70}; // Dados do tempo
+static volatile int64_t last_button_a_press_time = 0;               // Tempo do último pressionamento de botão
+static volatile int64_t last_button_b_press_time = 0;               // Tempo do último pressionamento de botão B
+static volatile int64_t last_button_sw_press_time = 0;              // Tempo do último pressionamento do botão SW
+static volatile bool is_alert_active = true;                        // Flag para indicar se o alerta está ativo
+static volatile bool is_simulated = false;                          // Flag para simulação de dados
 
 int main()
 {
@@ -101,9 +110,10 @@ int main()
     }
 
     cyw43_arch_enable_sta_mode();
-    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000))
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 60000))
     {
         printf("Falha ao conectar ao WiFi\n");
+        set_led_red_pwm(); // LED vermelho para falha de conexão
     }
 
     // Printa o IP
@@ -117,8 +127,6 @@ int main()
     AHT20_Data data;
     int32_t raw_temp_bmp;
     int32_t raw_pressure;
-    int32_t temperature;
-    int32_t pressure;
     double altitude;
 
     while (true)
@@ -126,26 +134,32 @@ int main()
         cyw43_arch_poll();
 
         // Verifica se os dados estão sendo simulados
-        if (is_simulated) {
-            get_simulated_data(&data);
-        } else {
+        if (is_simulated)
+        {
+            get_simulated_data(&weather_data);
+        }
+        else
+        {
             // Leitura do BMP280
             bmp280_read_raw(I2C0_PORT, &raw_temp_bmp, &raw_pressure);
-            temperature = bmp280_convert_temp(raw_temp_bmp, &params);
-            pressure = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &params);
 
-            // Cálculo da altitude
-            altitude = calculate_altitude(pressure);
+            weather_data.temperature = bmp280_convert_temp(raw_temp_bmp, &params);
+            weather_data.temperature /= 100.0; // Converte para Celsius
 
-            printf("Pressao BMP = %.3f kPa\n", pressure / 1000.0);
-            printf("Temperatura BMP: = %.2f C\n", temperature / 100.0);
-            printf("Altitude estimada: %.2f m\n", altitude);
+            weather_data.pressure = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &params);
+            weather_data.altitude = calculate_altitude(weather_data.pressure); // Cálculo da altitude
+            weather_data.pressure /= 100.0; // Converte para hPa
+
+            printf("Pressao BMP = %.3f hPa\n", weather_data.pressure);
+            printf("Temperatura BMP: = %.2f C\n", weather_data.temperature);
+            printf("Altitude estimada: %.2f m\n", weather_data.altitude);
 
             // Leitura do AHT20
             if (aht20_read(I2C1_PORT, &data))
             {
                 printf("Temperatura AHT: %.2f C\n", data.temperature);
                 printf("Umidade: %.2f %%\n\n\n", data.humidity);
+                weather_data.humidity = data.humidity;
             }
             else
             {
@@ -154,10 +168,10 @@ int main()
         }
 
         // Verifica os alertas
-        check_alerts(data.temperature, data.humidity);
+        check_alerts(weather_data.temperature, weather_data.humidity);
 
         // Verifica as condições climáticas
-        check_climate_conditions(data.temperature, data.humidity);
+        check_climate_conditions(weather_data.temperature, weather_data.humidity);
 
         sleep_ms(500);
     }
@@ -171,73 +185,92 @@ double calculate_altitude(double pressure)
 }
 
 // Função para verificar os alertas de temperatura
-void check_alerts(float temperature, float humidity) {
-    if (is_alert_active) {
-        if (temperature > max_temperature_limit) {
+void check_alerts(float temperature, float humidity)
+{
+    if (is_alert_active)
+    {
+        if (temperature > weather_data.maxTemperature)
+        {
             printf("Alerta: Temperatura fora dos limites!\n");
             play_tone(BUZZER_A_PIN, 700); // Toca o buzzer A
-            sleep_ms(250); //
-            stop_tone(BUZZER_A_PIN); // Para o buzzer A
-        } else if (temperature < min_temperature_limit) {
+            sleep_ms(250);                //
+            stop_tone(BUZZER_A_PIN);      // Para o buzzer A
+        }
+        else if (temperature < weather_data.minTemperature)
+        {
             printf("Alerta: Temperatura abaixo do limite!\n");
             play_tone(BUZZER_B_PIN, 400); // Toca o buzzer B
-            sleep_ms(250); //
-            stop_tone(BUZZER_B_PIN); // Para o buzzer B
+            sleep_ms(250);                //
+            stop_tone(BUZZER_B_PIN);      // Para o buzzer B
         }
     }
 }
 
 // Função para verificar as condições climáticas
-void check_climate_conditions(float temperature, float humidity) {
+void check_climate_conditions(float temperature, float humidity)
+{
     bool is_hot = temperature > 30;
     bool is_very_hot = temperature > 50;
-    bool is_cold   = temperature < 15;
+    bool is_cold = temperature < 15;
     bool is_very_cold = temperature < 5;
-    bool is_humid  = humidity > 80;
-    bool is_dry   = humidity < 20;
+    bool is_humid = humidity > 80;
+    bool is_dry = humidity < 20;
 
     ws2812b_clear(); // Limpa os LEDs
 
-    if (is_hot) {
-        /*ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha de baixo com azul fraco
+    if (is_hot)
+    {
+        ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha com azul forte
+        ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha com azul fraco
         ws2812b_fill_row(2, 0, 32, 0);
-        ws2812b_fill_row(3, 32, 0, 0); // Preenche a primeira linha de baixo com vermel fraco */
+        ws2812b_fill_row(3, 32, 0, 0); // Preenche a primeira linha com vermelho fraco
 
-        if (is_very_hot) {
-            //ws2812b_fill_row(4, 32, 0, 0); // Preenche a última linha de baixo com vermelho forte
-        } else {
+        if (is_very_hot)
+        {
+            ws2812b_fill_row(4, 32, 0, 0); // Preenche a última linha com vermelho forte
         }
-
-    } else if (is_cold) {
-        if (is_very_cold) {
-            //ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha de baixo com azul forte
-
-        } else {
-            /* ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha de baixo com azul fraco
-            ws2812b_fill_row(1, 0, 0, 16); // Preenche a primeira linha de baixo com azul forte */
+    }
+    else if (is_cold)
+    {
+        if (is_very_cold)
+        {
+            ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha com azul forte
         }
-    } else {
-        /* ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha de baixo com azul forte
-        ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha de baixo com azul fraco
-        ws2812b_fill_row(2, 0, 32, 0); */
+        else
+        {
+            ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha com azul fraco
+            ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha com azul fraco
+        }
+    }
+    else
+    {
+        ws2812b_fill_row(0, 0, 0, 32); // Preenche a primeira linha com azul forte
+        ws2812b_fill_row(1, 0, 0, 16); // Preenche a segunda linha com azul fraco
+        ws2812b_fill_row(2, 0, 32, 0); // Preenche a terceira linha com verde
     }
 
     ws2812b_write(); // Atualiza a matriz de LEDs
 
-    if (is_humid) {
+    if (is_humid)
+    {
         set_led_blue_pwm(); // LED ciano para clima úmido
-    } else if (is_dry) {
+    }
+    else if (is_dry)
+    {
         set_led_red_pwm(); // LED amarelo para clima seco
-    } else {
+    }
+    else
+    {
         set_led_green_pwm(); // LED branco para clima normal
     }
 }
 
 // Função para obter dados simulados do AHT20
-void get_simulated_data(AHT20_Data *data) {
+void get_simulated_data(weather_data_t *data)
+{
     // Simula dados de temperatura e umidade
-    data->temperature = get_joystick_y () / 4095.0 * 100.0; // Temperatura entre 0.0 e 60.0 C
-    data->humidity = get_joystick_x () / 4095.0 * 100.0; // Umidade entre 0.0 e 100.0
+    data->temperature = get_joystick_y() / 4095.0 * 100.0; // Temperatura entre 0.0 e 60.0 C
+    data->humidity = get_joystick_x() / 4095.0 * 100.0;    // Umidade entre 0.0 e 100.0
 
     printf("Dados simulados: Temperatura: %.2f C, Umidade: %.2f %%\n", data->temperature, data->humidity);
 }
@@ -275,37 +308,65 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     hs->sent = 0;
 
-    if (strstr(req, "POST /limites")) {
+    if (strstr(req, "POST /api/limits"))
+    {
         char *body = strstr(req, "\r\n\r\n");
-        if(body) {
+        if (body)
+        {
             body += 4;
 
             // Extrai os valores diretamente usando sscanf
             int max_val, min_val;
-            if(sscanf(body, "{\"max\":%d,\"min\":%d", &max_val, &min_val) == 2) {
+            if (sscanf(body, "{\"max\":%d,\"min\":%d", &max_val, &min_val) == 2)
+            {
                 // Valida os valores recebidos
-                if(max_val >= 0 && max_val <= 100 && min_val >= 0 && min_val <= 100) {
-                    max_temperature_limit = max_val;
-                    min_temperature_limit = min_val;
+                if (max_val >= 0 && max_val <= 100 && min_val >= 0 && min_val <= 100)
+                {
+                    weather_data.maxTemperature = max_val;
+                    weather_data.minTemperature = min_val;
                 }
             }
         }
 
         printf("Novos limites: Max=%d, Min=%d\n",
-            max_temperature_limit,
-            min_temperature_limit);
+               weather_data.maxTemperature,
+               weather_data.minTemperature);
 
         // Confirma atualização
         const char *txt = "Limites atualizados";
         hs->len = snprintf(hs->response, sizeof(hs->response),
-                        "HTTP/1.1 200 OK\r\n"
-                        "Content-Type: text/plain\r\n"
-                        "Content-Length: %d\r\n"
-                        "\r\n"
-                        "%s",
-                        (int)strlen(txt), txt);
+                           "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: text/plain\r\n"
+                           "Content-Length: %d\r\n"
+                           "\r\n"
+                           "%s",
+                           (int)strlen(txt), txt);
     }
-    else{
+    else if (strstr(req, "GET /api/weather"))
+    {
+        // Responde com os dados atuais
+        /* printf("Altura: %.2f m\n", weather_data.altitude);
+        printf("Temperatura: %.2f C\n", weather_data.temperature);
+        printf("Umidade: %.2f %%\n", weather_data.humidity);
+        printf("Pressão: %.2f kPa\n", weather_data.pressure);
+        printf("Min Temp: %d C, Max Temp: %d C\n",
+               weather_data.minTemperature, weather_data.maxTemperature); */
+
+        char json_data[256];
+        snprintf(json_data, sizeof(json_data),
+                 "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"minTemperature\":%d,\"maxTemperature\":%d}",
+                 weather_data.temperature, weather_data.humidity, weather_data.pressure, weather_data.altitude, weather_data.minTemperature, weather_data.maxTemperature);
+
+        hs->len = snprintf(hs->response, sizeof(hs->response),
+                           "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: application/json\r\n"
+                           "Content-Length: %d\r\n"
+                           "\r\n"
+                           "%s",
+                           (int)strlen(json_data), json_data);
+    }
+    else
+    {
         hs->len = snprintf(hs->response, sizeof(hs->response),
                            "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/html\r\n"
@@ -378,8 +439,7 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         // Atualiza o tempo do último pressionamento do botão B
         last_button_b_press_time = current_time;
 
-        min_temperature_limit = 5; // Reseta o limite mínimo de temperatura
-        max_temperature_limit = 70; // Reseta o limite máximo de temperatura
+        weather_data.minTemperature = 5;  // Reseta o limite mínimo de temperatura
+        weather_data.maxTemperature = 70; // Reseta o limite máximo de temperatura
     }
-
 }
