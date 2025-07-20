@@ -24,7 +24,7 @@
 #define I2C1_PORT i2c1              // i2c1 pinos 2 e 3
 #define I2C1_SDA 2                  // 2
 #define I2C1_SCL 3                  // 3
-#define SEA_LEVEL_PRESSURE 101700.0 // 101325.0 // Pressão ao nível do mar em Pa
+#define SEA_LEVEL_PRESSURE 101325.0 // 101325.0 // Pressão ao nível do mar em Pa
 
 // Tipos de dados
 struct http_state
@@ -62,6 +62,10 @@ static volatile int64_t last_button_b_press_time = 0;               // Tempo do 
 static volatile int64_t last_button_sw_press_time = 0;              // Tempo do último pressionamento do botão SW
 static volatile bool is_alert_active = true;                        // Flag para indicar se o alerta está ativo
 static volatile bool is_simulated = false;                          // Flag para simulação de dados
+static volatile bool wifi_connected = false;
+static volatile bool server_started = false;
+static uint64_t last_wifi_check = 0;
+
 
 int main()
 {
@@ -105,15 +109,18 @@ int main()
 
     if (cyw43_arch_init())
     {
-        printf("Falha ao inicializar a arquitetura CYW43\n");
+        printf("Falha ao inicializar a arquitetura CYW43\n ");
+        set_led_red_pwm(); // LED vermelho para falha de inicialização
+        sleep_ms(2000);
         return 1;
     }
 
     cyw43_arch_enable_sta_mode();
-    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 60000))
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 120000))
     {
         printf("Falha ao conectar ao WiFi\n");
         set_led_red_pwm(); // LED vermelho para falha de conexão
+        sleep_ms(2000);
     }
 
     // Printa o IP
@@ -129,11 +136,11 @@ int main()
     int32_t raw_pressure;
     double altitude;
 
+    // No loop principal, substitua a parte de leitura dos sensores:
     while (true)
     {
         cyw43_arch_poll();
 
-        // Verifica se os dados estão sendo simulados
         if (is_simulated)
         {
             get_simulated_data(&weather_data);
@@ -147,25 +154,32 @@ int main()
             weather_data.temperature /= 100.0; // Converte para Celsius
 
             weather_data.pressure = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &params);
-            weather_data.altitude = calculate_altitude(weather_data.pressure); // Cálculo da altitude
             weather_data.pressure /= 100.0; // Converte para hPa
 
-            printf("Pressao BMP = %.3f hPa\n", weather_data.pressure);
-            printf("Temperatura BMP: = %.2f C\n", weather_data.temperature);
-            printf("Altitude estimada: %.2f m\n", weather_data.altitude);
+            // **CORREÇÃO: Calcular altitude APÓS converter pressão para Pa**
+            weather_data.altitude = calculate_altitude(weather_data.pressure * 100.0); // Converte hPa para Pa
+
+            /* printf("Dados BMP280: Temp=%.2f°C, Press=%.2f hPa, Alt=%.2f m\n",
+                   weather_data.temperature, weather_data.pressure, weather_data.altitude); */
 
             // Leitura do AHT20
             if (aht20_read(I2C1_PORT, &data))
             {
-                printf("Temperatura AHT: %.2f C\n", data.temperature);
-                printf("Umidade: %.2f %%\n\n\n", data.humidity);
                 weather_data.humidity = data.humidity;
+                /* printf("Dados AHT20: Temp=%.2f°C, Hum=%.2f%%\n",
+                       data.temperature, data.humidity); */
             }
             else
             {
-                printf("Erro na leitura do AHT10!\n\n\n");
+                printf("Erro na leitura do AHT20!\n");
+                weather_data.humidity = 0.0; // Valor padrão em caso de erro
             }
         }
+
+       /*  // **DEBUG: Mostra dados atuais**
+        printf("Dados finais: T=%.2f, H=%.2f, P=%.2f, A=%.2f\n\n",
+               weather_data.temperature, weather_data.humidity,
+               weather_data.pressure, weather_data.altitude); */
 
         // Verifica os alertas
         check_alerts(weather_data.temperature, weather_data.humidity);
@@ -173,7 +187,7 @@ int main()
         // Verifica as condições climáticas
         check_climate_conditions(weather_data.temperature, weather_data.humidity);
 
-        sleep_ms(500);
+        sleep_ms(1000); // Aumentei para 1 segundo
     }
     cyw43_arch_deinit(); // Esperamos que nunca chegue aqui
 }
@@ -291,7 +305,6 @@ static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
 // Função de recebimento HTTP
 static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
-
     if (!p)
     {
         tcp_close(tpcb);
@@ -308,18 +321,18 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     hs->sent = 0;
 
+    // **DEBUG: Mostra qual requisição foi feita**
+    printf("Requisição HTTP recebida: %.50s...\n", req);
+
     if (strstr(req, "POST /api/limits"))
     {
         char *body = strstr(req, "\r\n\r\n");
         if (body)
         {
             body += 4;
-
-            // Extrai os valores diretamente usando sscanf
             int max_val, min_val;
             if (sscanf(body, "{\"max\":%d,\"min\":%d", &max_val, &min_val) == 2)
             {
-                // Valida os valores recebidos
                 if (max_val >= 0 && max_val <= 100 && min_val >= 0 && min_val <= 100)
                 {
                     weather_data.maxTemperature = max_val;
@@ -332,11 +345,13 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
                weather_data.maxTemperature,
                weather_data.minTemperature);
 
-        // Confirma atualização
         const char *txt = "Limites atualizados";
         hs->len = snprintf(hs->response, sizeof(hs->response),
                            "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/plain\r\n"
+                           "Access-Control-Allow-Origin: *\r\n"
+                           "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                           "Access-Control-Allow-Headers: Content-Type\r\n"
                            "Content-Length: %d\r\n"
                            "\r\n"
                            "%s",
@@ -344,29 +359,34 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     else if (strstr(req, "GET /api/weather"))
     {
-        // Responde com os dados atuais
-        /* printf("Altura: %.2f m\n", weather_data.altitude);
-        printf("Temperatura: %.2f C\n", weather_data.temperature);
-        printf("Umidade: %.2f %%\n", weather_data.humidity);
-        printf("Pressão: %.2f kPa\n", weather_data.pressure);
-        printf("Min Temp: %d C, Max Temp: %d C\n",
-               weather_data.minTemperature, weather_data.maxTemperature); */
+        // **DEBUG: Mostra os dados antes de enviar**
+        printf("Enviando dados: Temp=%.2f, Hum=%.2f, Press=%.2f, Alt=%.2f\n",
+               weather_data.temperature, weather_data.humidity,
+               weather_data.pressure, weather_data.altitude);
 
-        char json_data[256];
+        char json_data[512];
         snprintf(json_data, sizeof(json_data),
                  "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"minTemperature\":%d,\"maxTemperature\":%d}",
-                 weather_data.temperature, weather_data.humidity, weather_data.pressure, weather_data.altitude, weather_data.minTemperature, weather_data.maxTemperature);
+                 weather_data.temperature, weather_data.humidity,
+                 weather_data.pressure, weather_data.altitude,
+                 weather_data.minTemperature, weather_data.maxTemperature);
 
         hs->len = snprintf(hs->response, sizeof(hs->response),
                            "HTTP/1.1 200 OK\r\n"
                            "Content-Type: application/json\r\n"
+                           "Access-Control-Allow-Origin: *\r\n"
+                           "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                           "Access-Control-Allow-Headers: Content-Type\r\n"
                            "Content-Length: %d\r\n"
                            "\r\n"
                            "%s",
                            (int)strlen(json_data), json_data);
+
+        printf("JSON enviado: %s\n", json_data);
     }
     else
     {
+        // **HTML principal**
         hs->len = snprintf(hs->response, sizeof(hs->response),
                            "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/html\r\n"
@@ -379,10 +399,8 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
 
     tcp_arg(tpcb, hs);
     tcp_sent(tpcb, http_sent);
-
     tcp_write(tpcb, hs->response, hs->len, TCP_WRITE_FLAG_COPY);
     tcp_output(tpcb);
-
     pbuf_free(p);
     return ERR_OK;
 }
