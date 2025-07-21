@@ -55,6 +55,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
 static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err);
 static void start_http_server(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
+bool try_wifi_connect(void);
 
 // Variáveis globais
 static weather_data_t weather_data = {0, 0, 0, 0, 10, 70}; // Dados do tempo
@@ -66,6 +67,7 @@ static volatile bool is_simulated = false;                 // Flag para simulaç
 static volatile bool wifi_connected = false;
 static volatile bool server_started = false;
 static uint64_t last_wifi_check = 0;
+
 
 int main()
 {
@@ -116,30 +118,67 @@ int main()
     }
 
     cyw43_arch_enable_sta_mode();
-    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 120000))
+
+    // Loop até conseguir conectar ao Wi-Fi pela primeira vez
+    while (!wifi_connected)
     {
-        printf("Falha ao conectar ao WiFi\n");
-        set_led_red_pwm(); // LED vermelho para falha de conexão
-        sleep_ms(2000);
+        wifi_connected = try_wifi_connect();
+
+        if (!wifi_connected)
+        {
+            printf("Nova tentativa em 5 segundos...\n");
+            sleep_ms(5000);
+        }
     }
 
-    // Printa o IP
-    uint8_t *ip = (uint8_t *)&(cyw43_state.netif[0].ip_addr.addr);
-    char ip_str[24];
-    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    printf("IP: %s\n", ip_str);
+    // Só inicia o servidor HTTP após conectar ao Wi-Fi
     start_http_server();
+    server_started = true;
 
-    // Estrutura para armazenar os dados do sensor
+    // Estruturas para leitura de sensores
     AHT20_Data data;
     int32_t raw_temp_bmp;
     int32_t raw_pressure;
     double altitude;
+    uint64_t current_time;
 
-    // No loop principal, substitua a parte de leitura dos sensores:
+    // Loop principal
     while (true)
     {
-        cyw43_arch_poll();
+        cyw43_arch_poll(); // Mantém o Wi-Fi funcionando
+
+        // Verifica periodicamente o status da conexão Wi-Fi (a cada 10 segundos)
+        current_time = to_ms_since_boot(get_absolute_time());
+        if (current_time - last_wifi_check > 10000)
+        {
+            last_wifi_check = current_time;
+
+            // Verifica o status do link Wi-Fi
+            if (cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) != CYW43_LINK_UP)
+            {
+                printf("Conexão Wi-Fi perdida! Tentando reconectar...\n");
+                wifi_connected = false;
+
+                // Tenta reconectar
+                while (!wifi_connected)
+                {
+                    wifi_connected = try_wifi_connect();
+
+                    if (!wifi_connected)
+                    {
+                        printf("Nova tentativa em 5 segundos...\n");
+                        sleep_ms(5000);
+                    }
+                }
+
+                // Reinicia o servidor HTTP se necessário
+                if (wifi_connected && !server_started)
+                {
+                    start_http_server();
+                    server_started = true;
+                }
+            }
+        }
 
         if (is_simulated)
         {
@@ -450,4 +489,27 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         weather_data.minTemperature = 5;  // Reseta o limite mínimo de temperatura
         weather_data.maxTemperature = 70; // Reseta o limite máximo de temperatura
     }
+}
+
+// Função para tentar conectar ao Wi-Fi
+// Retorna true se a conexão for bem-sucedida, false caso contrário
+bool try_wifi_connect()
+{
+    printf("Tentando conectar ao Wi-Fi '%s'...\n", WIFI_SSID);
+
+    set_led_blue_pwm(); // LED azul para indicar tentativa de conexão
+
+    // Tenta conectar com timeout de 10 segundos
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 10000))
+    {
+        printf("Falha ao conectar ao Wi-Fi\n");
+        set_led_red_pwm(); // LED vermelho para falha
+        return false;
+    }
+
+    // Conexão bem-sucedida
+    uint8_t *ip = (uint8_t *)&(cyw43_state.netif[0].ip_addr.addr);
+    printf("Wi-Fi conectado! IP: %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
+    set_led_green_pwm(); // LED verde para conexão bem-sucedida
+    return true;
 }
