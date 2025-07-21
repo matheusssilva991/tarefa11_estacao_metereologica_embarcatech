@@ -31,7 +31,7 @@ const char *html_data =
 "<div class='max-w-7xl mx-auto'>"
 "<header class='text-center mb-8'>"
 "<h1 class='text-4xl md:text-5xl font-bold text-white'><i class='fas fa-cloud-sun text-blue-400'></i> Estação Meteorológica</h1>"
-"<p class='text-lg text-gray-400 mt-2'>📍 Itabuna, Bahia</p>"
+"<p class='text-lg text-gray-400 mt-2'><i class='fa-solid fa-location-dot'></i> Itabuna, Bahia</p>"
 "<div class='mt-4 flex items-center justify-center space-x-2'>"
 "<div class='w-3 h-3 bg-green-500 rounded-full animate-pulse'></div>"
 "<span id='status-text' class='text-green-400 font-medium'>Online</span>"

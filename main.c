@@ -395,10 +395,10 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     {
         char json_data[512];
         snprintf(json_data, sizeof(json_data),
-                 "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"minTemperature\":%d,\"maxTemperature\":%d}",
+                 "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"minTemperature\":%d,\"maxTemperature\":%d,\"tempOffset\":%.2f}",
                  weather_data.temperature, weather_data.humidity,
                  weather_data.pressure, weather_data.altitude,
-                 weather_data.minTemperature, weather_data.maxTemperature);
+                 weather_data.minTemperature, weather_data.maxTemperature, weather_data.offsetTemperature);
 
         hs->len = snprintf(hs->response, sizeof(hs->response),
                            "HTTP/1.1 200 OK\r\n"
