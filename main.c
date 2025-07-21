@@ -42,6 +42,7 @@ typedef struct weather_data
     float altitude;
     int minTemperature;
     int maxTemperature;
+    float offsetTemperature;
 } weather_data_t;
 
 // Prototipos
@@ -154,8 +155,6 @@ int main()
 
             weather_data.pressure = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &params);
             weather_data.pressure /= 100.0; // Converte para hPa
-
-            // **CORREÇÃO: Calcular altitude APÓS converter pressão para Pa**
             weather_data.altitude = calculate_altitude(weather_data.pressure * 100.0); // Converte hPa para Pa
 
             /* printf("Dados BMP280: Temp=%.2f°C, Press=%.2f hPa, Alt=%.2f m\n",
@@ -175,18 +174,13 @@ int main()
             }
         }
 
-        /*  // **DEBUG: Mostra dados atuais**
-         printf("Dados finais: T=%.2f, H=%.2f, P=%.2f, A=%.2f\n\n",
-                weather_data.temperature, weather_data.humidity,
-                weather_data.pressure, weather_data.altitude); */
-
         // Verifica os alertas
         check_alerts(weather_data.temperature, weather_data.humidity);
 
         // Verifica as condições climáticas
         check_climate_conditions(weather_data.temperature, weather_data.humidity);
 
-        sleep_ms(1000); // Aumentei para 1 segundo
+        sleep_ms(1000);
     }
     cyw43_arch_deinit(); // Esperamos que nunca chegue aqui
 }
@@ -320,9 +314,6 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     hs->sent = 0;
 
-    // **DEBUG: Mostra qual requisição foi feita**
-    // printf("Requisição HTTP recebida: %.50s...\n", req);
-
     if (strstr(req, "POST /api/limits"))
     {
         char *body = strstr(req, "\r\n\r\n");
@@ -330,21 +321,24 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         {
             body += 4;
             int max_val, min_val;
-            if (sscanf(body, "{\"min\":%d,\"max\":%d", &min_val, &max_val) == 2)
+            float offset_val = 0.0f;
+            if (sscanf(body, "{\"min\":%d,\"max\":%d,\"offset\":%f", &min_val, &max_val, &offset_val) == 2)
             {
                 // **DEBUG: Mostra os limites recebidos**
-                printf("Limites recebidos: Max=%d, Min=%d\n", max_val, min_val);
-                if (max_val >= 0 && max_val <= 100 && min_val >= 0 && min_val <= 100)
+                printf("Limites recebidos: Max=%d, Min=%d, Offset=%f\n", max_val, min_val, offset_val);
+                if (max_val >= 0 && max_val <= 100 && min_val >= -50 && min_val <= 50)
                 {
                     weather_data.maxTemperature = max_val;
                     weather_data.minTemperature = min_val;
+                    weather_data.offsetTemperature = offset_val; // Atualiza o offset de temperatura
                 }
             }
         }
 
-        printf("Novos limites: Max=%d, Min=%d\n",
+        printf("Novos limites: Max=%d, Min=%d, Offset=%f\n",
                weather_data.maxTemperature,
-               weather_data.minTemperature);
+               weather_data.minTemperature,
+               weather_data.offsetTemperature);
 
         const char *txt = "Limites atualizados";
         hs->len = snprintf(hs->response, sizeof(hs->response),
@@ -360,11 +354,6 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     else if (strstr(req, "GET /api/weather"))
     {
-        // **DEBUG: Mostra os dados antes de enviar**
-        /* printf("Enviando dados: Temp=%.2f, Hum=%.2f, Press=%.2f, Alt=%.2f\n",
-               weather_data.temperature, weather_data.humidity,
-               weather_data.pressure, weather_data.altitude); */
-
         char json_data[512];
         snprintf(json_data, sizeof(json_data),
                  "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"minTemperature\":%d,\"maxTemperature\":%d}",
