@@ -1,0 +1,5 @@
+{
+  "minTemperature": 10,
+  "maxTemperature": 70,
+  "tempOffset": -10
+}
