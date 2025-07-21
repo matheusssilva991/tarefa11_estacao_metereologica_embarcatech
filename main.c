@@ -57,15 +57,14 @@ void gpio_irq_handler(uint gpio, uint32_t events);
 
 // Variáveis globais
 static weather_data_t weather_data = {0, 0, 0, 0, 10, 70}; // Dados do tempo
-static volatile int64_t last_button_a_press_time = 0;               // Tempo do último pressionamento de botão
-static volatile int64_t last_button_b_press_time = 0;               // Tempo do último pressionamento de botão B
-static volatile int64_t last_button_sw_press_time = 0;              // Tempo do último pressionamento do botão SW
-static volatile bool is_alert_active = true;                        // Flag para indicar se o alerta está ativo
-static volatile bool is_simulated = false;                          // Flag para simulação de dados
+static volatile int64_t last_button_a_press_time = 0;      // Tempo do último pressionamento de botão
+static volatile int64_t last_button_b_press_time = 0;      // Tempo do último pressionamento de botão B
+static volatile int64_t last_button_sw_press_time = 0;     // Tempo do último pressionamento do botão SW
+static volatile bool is_alert_active = true;               // Flag para indicar se o alerta está ativo
+static volatile bool is_simulated = false;                 // Flag para simulação de dados
 static volatile bool wifi_connected = false;
 static volatile bool server_started = false;
 static uint64_t last_wifi_check = 0;
-
 
 int main()
 {
@@ -176,10 +175,10 @@ int main()
             }
         }
 
-       /*  // **DEBUG: Mostra dados atuais**
-        printf("Dados finais: T=%.2f, H=%.2f, P=%.2f, A=%.2f\n\n",
-               weather_data.temperature, weather_data.humidity,
-               weather_data.pressure, weather_data.altitude); */
+        /*  // **DEBUG: Mostra dados atuais**
+         printf("Dados finais: T=%.2f, H=%.2f, P=%.2f, A=%.2f\n\n",
+                weather_data.temperature, weather_data.humidity,
+                weather_data.pressure, weather_data.altitude); */
 
         // Verifica os alertas
         check_alerts(weather_data.temperature, weather_data.humidity);
@@ -286,7 +285,7 @@ void get_simulated_data(weather_data_t *data)
     data->temperature = get_joystick_y() / 4095.0 * 100.0; // Temperatura entre 0.0 e 60.0 C
     data->humidity = get_joystick_x() / 4095.0 * 100.0;    // Umidade entre 0.0 e 100.0
 
-    printf("Dados simulados: Temperatura: %.2f C, Umidade: %.2f %%\n", data->temperature, data->humidity);
+    //printf("Dados simulados: Temperatura: %.2f C, Umidade: %.2f %%\n", data->temperature, data->humidity);
 }
 
 // Função de callback para enviar dados HTTP
@@ -322,7 +321,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     hs->sent = 0;
 
     // **DEBUG: Mostra qual requisição foi feita**
-    printf("Requisição HTTP recebida: %.50s...\n", req);
+    // printf("Requisição HTTP recebida: %.50s...\n", req);
 
     if (strstr(req, "POST /api/limits"))
     {
@@ -331,8 +330,10 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         {
             body += 4;
             int max_val, min_val;
-            if (sscanf(body, "{\"max\":%d,\"min\":%d", &max_val, &min_val) == 2)
+            if (sscanf(body, "{\"min\":%d,\"max\":%d", &min_val, &max_val) == 2)
             {
+                // **DEBUG: Mostra os limites recebidos**
+                printf("Limites recebidos: Max=%d, Min=%d\n", max_val, min_val);
                 if (max_val >= 0 && max_val <= 100 && min_val >= 0 && min_val <= 100)
                 {
                     weather_data.maxTemperature = max_val;
@@ -360,9 +361,9 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     else if (strstr(req, "GET /api/weather"))
     {
         // **DEBUG: Mostra os dados antes de enviar**
-        printf("Enviando dados: Temp=%.2f, Hum=%.2f, Press=%.2f, Alt=%.2f\n",
+        /* printf("Enviando dados: Temp=%.2f, Hum=%.2f, Press=%.2f, Alt=%.2f\n",
                weather_data.temperature, weather_data.humidity,
-               weather_data.pressure, weather_data.altitude);
+               weather_data.pressure, weather_data.altitude); */
 
         char json_data[512];
         snprintf(json_data, sizeof(json_data),
@@ -382,7 +383,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
                            "%s",
                            (int)strlen(json_data), json_data);
 
-        printf("JSON enviado: %s\n", json_data);
+        //printf("JSON enviado: %s\n", json_data);
     }
     else
     {
