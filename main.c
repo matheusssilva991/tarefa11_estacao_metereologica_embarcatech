@@ -196,14 +196,14 @@ void check_alerts(float temperature, float humidity)
 {
     if (is_alert_active)
     {
-        if (temperature > weather_data.maxTemperature)
+        if (temperature > weather_data.maxTemperature + weather_data.offsetTemperature)
         {
-            printf("Alerta: Temperatura fora dos limites!\n");
-            play_tone(BUZZER_A_PIN, 700); // Toca o buzzer A
+            printf("Alerta: Temperatura acima do limite!\n");
+            play_tone(BUZZER_A_PIN, 1000); // Toca o buzzer A
             sleep_ms(250);                //
             stop_tone(BUZZER_A_PIN);      // Para o buzzer A
         }
-        else if (temperature < weather_data.minTemperature)
+        else if (temperature < weather_data.minTemperature + weather_data.offsetTemperature)
         {
             printf("Alerta: Temperatura abaixo do limite!\n");
             play_tone(BUZZER_B_PIN, 400); // Toca o buzzer B
@@ -322,7 +322,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
             body += 4;
             int max_val, min_val;
             float offset_val = 0.0f;
-            if (sscanf(body, "{\"min\":%d,\"max\":%d,\"offset\":%f", &min_val, &max_val, &offset_val) == 2)
+            if (sscanf(body, "{\"min\":%d,\"max\":%d,\"offset\":%f", &min_val, &max_val, &offset_val) == 3)
             {
                 // **DEBUG: Mostra os limites recebidos**
                 printf("Limites recebidos: Max=%d, Min=%d, Offset=%f\n", max_val, min_val, offset_val);
