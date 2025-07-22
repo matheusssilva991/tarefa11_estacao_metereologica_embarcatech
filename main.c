@@ -214,10 +214,10 @@ int main()
         }
 
         // Verifica os alertas
-        check_alerts(weather_data.temperature, weather_data.humidity);
+        check_alerts();
 
         // Verifica as condições climáticas
-        check_climate_conditions(weather_data.temperature, weather_data.humidity);
+        check_climate_conditions();
 
         sleep_ms(1000);
     }
