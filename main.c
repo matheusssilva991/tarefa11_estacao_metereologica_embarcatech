@@ -486,7 +486,7 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         // Atualiza o tempo do último pressionamento do botão B
         last_button_b_press_time = current_time;
 
-        weather_data.minTemperature = 5;  // Reseta o limite mínimo de temperatura
+        weather_data.minTemperature = 10;  // Reseta o limite mínimo de temperatura
         weather_data.maxTemperature = 70; // Reseta o limite máximo de temperatura
     }
 }
