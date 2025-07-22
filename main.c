@@ -29,7 +29,7 @@
 // Tipos de dados
 struct http_state
 {
-    char response[10000];
+    char response[20000];
     size_t len;
     size_t sent;
 };
@@ -393,7 +393,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     else if (strstr(req, "GET /api/weather"))
     {
-        char json_data[512];
+        char json_data[2048];
         snprintf(json_data, sizeof(json_data),
                  "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"minTemperature\":%d,\"maxTemperature\":%d,\"tempOffset\":%.2f}",
                  weather_data.temperature, weather_data.humidity,
