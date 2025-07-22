@@ -48,8 +48,8 @@ typedef struct weather_data
 // Prototipos
 void get_simulated_data(weather_data_t *data);
 double calculate_altitude(double pressure);
-void check_alerts(float temperature, float humidity);
-void check_climate_conditions(float temperature, float humidity);
+void check_alerts();
+void check_climate_conditions();
 static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len);
 static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
 static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err);
@@ -231,18 +231,18 @@ double calculate_altitude(double pressure)
 }
 
 // Função para verificar os alertas de temperatura
-void check_alerts(float temperature, float humidity)
+void check_alerts()
 {
     if (is_alert_active)
     {
-        if (temperature > weather_data.maxTemperature + weather_data.offsetTemperature)
+        if (weather_data.temperature + weather_data.offsetTemperature > weather_data.maxTemperature)
         {
             printf("Alerta: Temperatura acima do limite!\n");
-            play_tone(BUZZER_A_PIN, 1000); // Toca o buzzer A
+            play_tone(BUZZER_A_PIN, 700); // Toca o buzzer A
             sleep_ms(250);                //
             stop_tone(BUZZER_A_PIN);      // Para o buzzer A
         }
-        else if (temperature < weather_data.minTemperature + weather_data.offsetTemperature)
+        else if (weather_data.temperature + weather_data.offsetTemperature < weather_data.minTemperature)
         {
             printf("Alerta: Temperatura abaixo do limite!\n");
             play_tone(BUZZER_B_PIN, 400); // Toca o buzzer B
@@ -253,14 +253,14 @@ void check_alerts(float temperature, float humidity)
 }
 
 // Função para verificar as condições climáticas
-void check_climate_conditions(float temperature, float humidity)
+void check_climate_conditions()
 {
-    bool is_hot = temperature > 30;
-    bool is_very_hot = temperature > 50;
-    bool is_cold = temperature < 15;
-    bool is_very_cold = temperature < 5;
-    bool is_humid = humidity > 80;
-    bool is_dry = humidity < 20;
+    bool is_hot = weather_data.temperature > 30;
+    bool is_very_hot = weather_data.temperature > 50;
+    bool is_cold = weather_data.temperature < 15;
+    bool is_very_cold = weather_data.temperature < 5;
+    bool is_humid = weather_data.humidity > 80;
+    bool is_dry = weather_data.humidity < 20;
 
     ws2812b_clear(); // Limpa os LEDs
 
